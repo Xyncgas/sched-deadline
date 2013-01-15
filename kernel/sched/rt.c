@@ -1303,12 +1303,14 @@ static void check_preempt_equal_prio(struct rq *rq, struct task_struct *p)
 		schedstat_add(&rq->rt, push_find_cycles, get_cycles() - x);
 		return;
 	}
+	schedstat_add(&rq->rt, push_find_cycles, get_cycles() - x);
 
 	x = get_cycles();
 	if (!cpupri_find(&rq->rd->cpupri, rq->curr, NULL)) {
 		schedstat_add(&rq->rt, push_find_cycles, get_cycles() - x);
 		return;
 	}
+	schedstat_add(&rq->rt, push_find_cycles, get_cycles() - x);
 
 	/*
 	 * There appears to be other cpus that can accept
@@ -1482,7 +1484,6 @@ static int find_lowest_rq(struct task_struct *task)
 	struct sched_domain *sd;
 	struct cpumask *lowest_mask = __get_cpu_var(local_cpu_mask);
 	int this_cpu = smp_processor_id();
-	struct rq *rq = cpu_rq(this_cpu);
 	int cpu      = task_cpu(task);
 	cycles_t x;
 
@@ -1495,9 +1496,10 @@ static int find_lowest_rq(struct task_struct *task)
 
 	x = get_cycles();
 	if (!cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask)) {
-		schedstat_add(&rq->rt, push_find_cycles, get_cycles() - x);
+		schedstat_add(&task_rq(task)->rt, push_find_cycles, get_cycles() - x);
 		return -1; /* No targets found */
 	}
+	schedstat_add(&task_rq(task)->rt, push_find_cycles, get_cycles() - x);
 
 	/*
 	 * At this point we have built a mask of cpus representing the
@@ -1687,13 +1689,11 @@ retry:
 			 * to push it to.  Do not retry in this case, since
 			 * other cpus will pull from us when ready.
 			 */
-			ret = 1;
 			goto put;
 		}
 
 		if (!task) {
 			/* No more tasks, just exit */
-			ret = 1;
 			goto put;
 		}
 
