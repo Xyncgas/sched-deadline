@@ -50,8 +50,8 @@ static inline void update_cache_slow(struct cpudl *cp)
  *
  * Returns: int - best CPU to/from migrate the task
  */
-int cpudl_find(struct cpudl *cp, struct cpumask *dlo_mask,
-		struct task_struct *p, struct cpumask *later_mask)
+int cpudl_find(struct cpudl *cp, struct task_struct *p,
+	       struct cpumask *later_mask)
 {
 	int now_cached_cpu = NO_CACHED_CPU;
 	u64 now_cached_dl;

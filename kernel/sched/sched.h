@@ -373,6 +373,16 @@ struct rt_rq {
 	u64 rt_runtime;
 	/* Nests inside the rq lock: */
 	raw_spinlock_t rt_runtime_lock;
+#ifdef CONFIG_SCHEDSTATS
+	unsigned long nr_retry_push;
+	unsigned long nr_pushed_away;
+	unsigned long nr_pulled_here;
+
+	u64 enqueue_cycles, dequeue_cycles;
+	unsigned long nr_enqueue, nr_dequeue;
+	u64 push_cycles, pull_cycles, push_find_cycles, push_set_cycles;
+	unsigned long nr_push, nr_pull;
+#endif
 
 #ifdef CONFIG_RT_GROUP_SCHED
 	unsigned long rt_nr_boosted;
@@ -392,6 +402,17 @@ struct dl_rq {
 	unsigned long dl_nr_running;
 
 	u64 exec_clock;
+#ifdef CONFIG_SCHEDSTATS
+	unsigned long nr_retry_push;
+	unsigned long nr_pushed_away;
+	unsigned long nr_pulled_here;
+
+	u64 enqueue_cycles, dequeue_cycles;
+	unsigned long nr_enqueue, nr_dequeue;
+	u64 push_cycles, pull_cycles, push_find_cycles, push_set_cycles,
+	    pull_find_cycles, pull_set_cycles;
+	unsigned long nr_push, nr_pull;
+#endif
 
 #ifdef CONFIG_SMP
 	/*
