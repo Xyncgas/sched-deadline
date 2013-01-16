@@ -951,7 +951,7 @@ static void check_preempt_equal_dl(struct rq *rq, struct task_struct *p)
 			schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 		return;
 	}
-	if (rq->curr->nr_cpus_allowed != 1)
+	if (rq->curr->dl.nr_cpus_allowed != 1)
 		schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 
 	/*
@@ -964,7 +964,7 @@ static void check_preempt_equal_dl(struct rq *rq, struct task_struct *p)
 		schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 		return;
 	}
-	if (p->nr_cpus_allowed != 1)
+	if (p->dl.nr_cpus_allowed != 1)
 		schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 
 	resched_task(rq->curr);
