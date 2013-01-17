@@ -124,7 +124,7 @@ static int cpudl_insert(struct cpudl *list, const int cpu, u64 dl)
  *
  * Returns: int - best CPU (skiplist maximum if suitable)
  */
-int cpudl_find(struct cpudl *cp, struct cpumask *dlo_mask,
+int cpudl_find(struct cpudl *cp,
 		struct task_struct *p, struct cpumask *later_mask)
 {
 	struct skiplist_item *first;
