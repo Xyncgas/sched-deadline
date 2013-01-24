@@ -644,6 +644,7 @@ static inline u64 next_deadline(struct rq *rq)
 static void inc_dl_deadline(struct dl_rq *dl_rq, u64 deadline)
 {
 	struct rq *rq = rq_of_dl_rq(dl_rq);
+	cycles_t x;
 
 	if (dl_rq->earliest_dl.curr == 0 ||
 	    dl_time_before(deadline, dl_rq->earliest_dl.curr)) {
@@ -655,7 +656,9 @@ static void inc_dl_deadline(struct dl_rq *dl_rq, u64 deadline)
 		 */
 		dl_rq->earliest_dl.next = dl_rq->earliest_dl.curr;
 		dl_rq->earliest_dl.curr = deadline;
+		x = get_cycles();
 		cpudl_set(&rq->rd->cpudl, rq->cpu, deadline, 1);
+		schedstat_add(&rq->dl, push_set_cycles, get_cycles() - x);
 	} else if (dl_rq->earliest_dl.next == 0 ||
 		   dl_time_before(deadline, dl_rq->earliest_dl.next)) {
 		/*
@@ -671,6 +674,7 @@ static void inc_dl_deadline(struct dl_rq *dl_rq, u64 deadline)
 static void dec_dl_deadline(struct dl_rq *dl_rq, u64 deadline)
 {
 	struct rq *rq = rq_of_dl_rq(dl_rq);
+	cycles_t x;
 
 	/*
 	 * Since we may have removed our earliest (and/or next earliest)
@@ -679,7 +683,9 @@ static void dec_dl_deadline(struct dl_rq *dl_rq, u64 deadline)
 	if (!dl_rq->dl_nr_running) {
 		dl_rq->earliest_dl.curr = 0;
 		dl_rq->earliest_dl.next = 0;
+		x = get_cycles();
 		cpudl_set(&rq->rd->cpudl, rq->cpu, 0, 0);
+		schedstat_add(&rq->dl, push_set_cycles, get_cycles() - x);
 	} else {
 		struct rb_node *leftmost = dl_rq->rb_leftmost;
 		struct sched_dl_entity *entry;
@@ -687,7 +693,9 @@ static void dec_dl_deadline(struct dl_rq *dl_rq, u64 deadline)
 		entry = rb_entry(leftmost, struct sched_dl_entity, rb_node);
 		dl_rq->earliest_dl.curr = entry->deadline;
 		dl_rq->earliest_dl.next = next_deadline(rq);
+		x = get_cycles();
 		cpudl_set(&rq->rd->cpudl, rq->cpu, entry->deadline, 1);
+		schedstat_add(&rq->dl, push_set_cycles, get_cycles() - x);
 	}
 }
 
@@ -802,7 +810,9 @@ static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct task_struct *pi_task = p->pi_top_task;
 	struct sched_dl_entity *pi_se = &p->dl;
+	cycles_t x;
 
+	x = get_cycles();
 	/*
 	 * Use the scheduling parameters of the top pi-waiter
 	 * task if we have one and its (relative) deadline is
@@ -827,6 +837,9 @@ static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 		enqueue_pushable_dl_task(rq, p);
 
 	inc_nr_running(rq);
+
+	schedstat_add(&rq->dl, enqueue_cycles, get_cycles() - x);
+	schedstat_inc(&rq->dl, nr_enqueue);
 }
 
 static void __dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
@@ -837,10 +850,16 @@ static void __dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 
 static void dequeue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 {
+	cycles_t x;
+
 	update_curr_dl(rq);
+	x = get_cycles();
 	__dequeue_task_dl(rq, p, flags);
 
 	dec_nr_running(rq);
+
+	schedstat_add(&rq->dl, dequeue_cycles, get_cycles() - x);
+	schedstat_inc(&rq->dl, nr_dequeue);
 }
 
 /*
@@ -913,21 +932,30 @@ out:
 
 static void check_preempt_equal_dl(struct rq *rq, struct task_struct *p)
 {
+	cycles_t x;
+
 	/*
 	 * Current can't be migrated, useless to reschedule,
 	 * let's hope p can move out.
 	 */
+	x = get_cycles();
 	if (rq->curr->nr_cpus_allowed == 1 ||
-	    cpudl_find(&rq->rd->cpudl, rq->curr, NULL) == -1)
+	    cpudl_find(&rq->rd->cpudl, rq->curr, NULL) == -1) {
+		if (rq->curr->nr_cpus_allowed != 1)
+			schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 		return;
+	}
 
 	/*
 	 * p is migratable, so let's not schedule it and
 	 * see if it is pushed or pulled somewhere else.
 	 */
+	x = get_cycles();
 	if (p->nr_cpus_allowed != 1 &&
-	    cpudl_find(&rq->rd->cpudl, p, NULL) != -1)
+	    cpudl_find(&rq->rd->cpudl, p, NULL) != -1) {
+		schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 		return;
+	}
 
 	resched_task(rq->curr);
 }
@@ -1126,7 +1154,9 @@ static int find_later_rq(struct task_struct *task)
 	struct sched_domain *sd;
 	struct cpumask *later_mask = __get_cpu_var(local_cpu_mask_dl);
 	int this_cpu = smp_processor_id();
+	struct rq *rq = cpu_rq(this_cpu);
 	int best_cpu, cpu = task_cpu(task);
+	cycles_t x;
 
 	/* Make sure the mask is initialized first */
 	if (unlikely(!later_mask))
@@ -1135,8 +1165,10 @@ static int find_later_rq(struct task_struct *task)
 	if (task->nr_cpus_allowed == 1)
 		return -1;
 
+	x = get_cycles();
 	best_cpu = cpudl_find(&task_rq(task)->rd->cpudl,
 			task, later_mask);
+	schedstat_add(&rq->dl, push_find_cycles, get_cycles() - x);
 	if (best_cpu == -1)
 		return -1;
 
@@ -1278,18 +1310,21 @@ static int push_dl_task(struct rq *rq)
 {
 	struct task_struct *next_task;
 	struct rq *later_rq;
+	cycles_t x;
+	int ret = 0;
 
+	x = get_cycles();
 	if (!rq->dl.overloaded)
-		return 0;
+		goto out;
 
 	next_task = pick_next_pushable_dl_task(rq);
 	if (!next_task)
-		return 0;
+		goto out;
 
 retry:
 	if (unlikely(next_task == rq->curr)) {
 		WARN_ON(1);
-		return 0;
+		goto out;
 	}
 
 	/*
@@ -1301,7 +1336,7 @@ retry:
 	    dl_time_before(next_task->dl.deadline, rq->curr->dl.deadline) &&
 	    rq->curr->nr_cpus_allowed > 1) {
 		resched_task(rq->curr);
-		return 0;
+		goto out;
 	}
 
 	/* We might release rq lock */
@@ -1324,30 +1359,39 @@ retry:
 			 * again, some other cpu will pull it when ready.
 			 */
 			dequeue_pushable_dl_task(rq, next_task);
-			goto out;
+			ret = 1;
+			goto put;
 		}
 
-		if (!task)
+		if (!task) {
 			/* No more tasks */
-			goto out;
+			ret = 1;
+			goto put;
+		}
 
+		schedstat_inc(&rq->dl, nr_retry_push);
 		put_task_struct(next_task);
 		next_task = task;
 		goto retry;
 	}
 
 	deactivate_task(rq, next_task, 0);
+	schedstat_inc(&rq->dl, nr_pushed_away);
 	set_task_cpu(next_task, later_rq->cpu);
 	activate_task(later_rq, next_task, 0);
+	ret = 1;
 
 	resched_task(later_rq->curr);
 
 	double_unlock_balance(rq, later_rq);
 
-out:
+put:
 	put_task_struct(next_task);
-
-	return 1;
+out:
+	schedstat_add(&rq->dl, push_cycles, get_cycles() - x);
+	schedstat_inc(&rq->dl, nr_push);
+ 
+	return ret;
 }
 
 static void push_dl_tasks(struct rq *rq)
@@ -1363,9 +1407,11 @@ static int pull_dl_task(struct rq *this_rq)
 	struct task_struct *p;
 	struct rq *src_rq;
 	u64 dmin = LONG_MAX;
+	cycles_t x;
 
+	x = get_cycles();
 	if (likely(!dl_overloaded(this_rq)))
-		return 0;
+		goto out;
 
 	for_each_cpu(cpu, this_rq->rd->dlo_mask) {
 		if (this_cpu == cpu)
@@ -1390,7 +1436,7 @@ static int pull_dl_task(struct rq *this_rq)
 		 * rq, we're done with it.
 		 */
 		if (src_rq->dl.dl_nr_running <= 1)
-			goto skip;
+			goto unlock;
 
 		p = pick_next_earliest_dl_task(src_rq, this_cpu);
 
@@ -1412,20 +1458,24 @@ static int pull_dl_task(struct rq *this_rq)
 			 */
 			if (dl_time_before(p->dl.deadline,
 					   src_rq->curr->dl.deadline))
-				goto skip;
+				goto unlock;
 
 			ret = 1;
 
 			deactivate_task(src_rq, p, 0);
+			schedstat_inc(&this_rq->dl, nr_pulled_here);
 			set_task_cpu(p, this_cpu);
 			activate_task(this_rq, p, 0);
 			dmin = p->dl.deadline;
 
 			/* Is there any other task even earlier? */
 		}
-skip:
+unlock:
 		double_unlock_balance(this_rq, src_rq);
 	}
+out:
+	schedstat_add(&this_rq->dl, pull_cycles, get_cycles() - x);
+	schedstat_inc(&this_rq->dl, nr_pull);
 
 	return ret;
 }
@@ -1505,20 +1555,29 @@ static void set_cpus_allowed_dl(struct task_struct *p,
 /* Assumes rq->lock is held */
 static void rq_online_dl(struct rq *rq)
 {
+	cycles_t x;
+
 	if (rq->dl.overloaded)
 		dl_set_overload(rq);
 
-	if (rq->dl.dl_nr_running > 0)
+	if (rq->dl.dl_nr_running > 1) {
+		x = get_cycles();
 		cpudl_set(&rq->rd->cpudl, rq->cpu, rq->dl.earliest_dl.curr, 1);
+		schedstat_add(&rq->dl, push_set_cycles, get_cycles() - x);
+	}
 }
 
 /* Assumes rq->lock is held */
 static void rq_offline_dl(struct rq *rq)
 {
+	cycles_t x;
+
 	if (rq->dl.overloaded)
 		dl_clear_overload(rq);
 
+	x = get_cycles();
 	cpudl_set(&rq->rd->cpudl, rq->cpu, 0, 0);
+	schedstat_add(&rq->dl, push_set_cycles, get_cycles() - x);
 }
 
 void init_sched_dl_class(void)
