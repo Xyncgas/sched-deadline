@@ -1213,8 +1213,8 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_pushable_task(rq, p);
 
 	dec_nr_running(rq);
-	schedstat_add(&rq->dl, dequeue_cycles, get_cycles() - x);
-	schedstat_inc(&rq->dl, nr_dequeue);
+	schedstat_add(&rq->rt, dequeue_cycles, get_cycles() - x);
+	schedstat_inc(&rq->rt, nr_dequeue);
 }
 
 /*
