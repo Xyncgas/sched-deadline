@@ -6410,6 +6410,7 @@ SYSCALL_DEFINE0(sched_yield)
 	struct rq *rq = this_rq_lock();
 
 	schedstat_inc(rq, yld_count);
+	update_rq_clock(rq);
 	current->sched_class->yield_task(rq);
 
 	/*
