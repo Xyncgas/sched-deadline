@@ -499,6 +499,7 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 						     dl_timer);
 	struct task_struct *p = dl_task_of(dl_se);
 	struct rq *rq = task_rq(p);
+	struct task_struct * sig_task;
 	raw_spin_lock(&rq->lock);
 
 	if (dl_se->flags & 1 && (!dl_se->task_yielded || dl_se->dmissed)) {
@@ -510,15 +511,25 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 			dl_se_signal(p, SIGXCPU, "Deadline miss.");
 			break;
 		case SCHED_DL_DMISS_ACT_SEND_SIG_OTHER_WITH_RUN:
-			dl_se_signal(
-			find_task_by_vpid(sysctl_sched_dl_dmiss_sig_pid),
-				SIGXCPU, "Deadline miss. The task is running.");
+			sig_task = find_task_by_vpid(
+						sysctl_sched_dl_dmiss_sig_pid);
+			if (sig_task)
+				dl_se_signal(sig_task, SIGXCPU,
+					"Deadline miss. The task is running.");
+			else
+				printk(KERN_ERR
+					"Invalid PID for sending signal.\n");
 			break;
 		case SCHED_DL_DMISS_ACT_SEND_SIG_OTHER_WITH_STOP:
-			dl_se_signal(p, SIGSTOP, "The task is stopped.");
-			dl_se_signal(
-			find_task_by_vpid(sysctl_sched_dl_dmiss_sig_pid),
-						SIGXCPU, "Deadline miss.");
+			dl_se_signal(p, SIGSTOP, "Current task is stoped");
+			sig_task = find_task_by_vpid(
+						sysctl_sched_dl_dmiss_sig_pid);
+			if (sig_task)
+				dl_se_signal(sig_task, SIGXCPU,
+					"Deadline miss. The task was stopped");
+			else
+				printk(KERN_ERR
+					"Invalid PID for sending signal.\n");
 			break;
 		case SCHED_DL_DMISS_ACT_PROCESS_END:
 			dl_se_signal(p, SIGKILL, "Deadline miss.");
