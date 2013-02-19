@@ -1200,6 +1200,9 @@ out:
 	return dest_cpu;
 }
 
+unsigned int sysctl_sched_dl_dmiss_count;
+unsigned int sysctl_sched_dl_dmiss_sig_pid;
+
 /*
  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_allowed is stable.
  */

@@ -472,6 +472,13 @@ static int start_dl_timer(struct sched_dl_entity *dl_se, bool boosted)
 	return hrtimer_active(&dl_se->dl_timer);
 }
 
+#define dl_se_signal(t, s, msg)					\
+do {									\
+	sigaddset(&t->pending.signal, s);				\
+	set_tsk_thread_flag(t, TIF_SIGPENDING);				\
+	printk(KERN_INFO msg " in %d (%s)\n", task_pid_nr(t), t->comm);	\
+} while (0)
+
 /*
  * This is the bandwidth enforcement timer callback. If here, we know
  * a task is not on its dl_rq, since the fact that the timer was running
@@ -493,6 +500,42 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	struct task_struct *p = dl_task_of(dl_se);
 	struct rq *rq = task_rq(p);
 	raw_spin_lock(&rq->lock);
+
+	if (dl_se->flags & 1 && (!dl_se->task_yielded || dl_se->dmissed)) {
+		sysctl_sched_dl_dmiss_count++;
+		switch (dl_se->flags & 0xe) {
+		case SCHED_DL_DMISS_ACT_NONE:
+			break;
+		case SCHED_DL_DMISS_ACT_SEND_SIG_OWN:
+			dl_se_signal(p, SIGXCPU, "Deadline miss.");
+			break;
+		case SCHED_DL_DMISS_ACT_SEND_SIG_OTHER_WITH_RUN:
+			dl_se_signal(
+			find_task_by_vpid(sysctl_sched_dl_dmiss_sig_pid),
+				SIGXCPU, "Deadline miss. The task is running.");
+			break;
+		case SCHED_DL_DMISS_ACT_SEND_SIG_OTHER_WITH_STOP:
+			dl_se_signal(p, SIGSTOP, "The task is stopped.");
+			dl_se_signal(
+			find_task_by_vpid(sysctl_sched_dl_dmiss_sig_pid),
+						SIGXCPU, "Deadline miss.");
+			break;
+		case SCHED_DL_DMISS_ACT_PROCESS_END:
+			dl_se_signal(p, SIGKILL, "Deadline miss.");
+			break;
+		case SCHED_DL_DMISS_ACT_PROCESS_STOP:
+			dl_se_signal(p, SIGSTOP, "The task is stopped.");
+			break;
+		default:
+			printk(KERN_ERR
+				"Invalid action flag is set to sched_flags.\n");
+			break;
+		}
+	}
+
+	/* Initialize */
+	dl_se->task_yielded = 0;
+	dl_se->dmissed = 0;
 
 	/*
 	 * We need to take care of a possible races here. In fact, the
@@ -546,6 +589,10 @@ int dl_runtime_exceeded(struct rq *rq, struct sched_dl_entity *dl_se)
 
 	if (!rorun && !dmiss)
 		return 0;
+
+	/* This means that this task is executed within the deadline */
+	if (dmiss)
+		dl_se->dmissed = 1;
 
 	/*
 	 * Record statistics about last and maximum deadline
@@ -863,6 +910,9 @@ static void yield_task_dl(struct rq *rq)
 		p->dl.runtime = 0;
 	}
 	update_curr_dl(rq);
+
+	/* This means that this task is executed within the period */
+	p->dl.task_yielded = 1;
 }
 
 #ifdef CONFIG_SMP
