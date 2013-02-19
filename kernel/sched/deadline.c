@@ -860,7 +860,6 @@ static void yield_task_dl(struct rq *rq)
 	 * new scheduling parameters (thanks to dl_new=1).
 	 */
 	if (p->dl.runtime > 0) {
-		rq->curr->dl.dl_new = 1;
 		p->dl.runtime = 0;
 	}
 	update_curr_dl(rq);
