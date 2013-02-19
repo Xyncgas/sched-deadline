@@ -280,7 +280,7 @@ static void replenish_dl_entity(struct sched_dl_entity *dl_se,
 	 */
 	while (dl_se->runtime <= 0) {
 		dl_se->deadline += pi_se->dl_period;
-		dl_se->runtime += pi_se->dl_runtime;
+		dl_se->runtime = pi_se->dl_runtime;
 	}
 
 	/*
@@ -487,7 +487,7 @@ static void init_dl_task_timer(struct sched_dl_entity *dl_se)
 static
 int dl_runtime_exceeded(struct rq *rq, struct sched_dl_entity *dl_se)
 {
-	int dmiss = dl_time_before(dl_se->deadline, rq->clock);
+	int dmiss = dl_time_before(dl_se->deadline, cpu_clock(rq->cpu));
 	int rorun = dl_se->runtime <= 0;
 
 	if (!rorun && !dmiss)
@@ -535,11 +535,12 @@ static void update_curr_dl(struct rq *rq)
 	struct task_struct *curr = rq->curr;
 	struct sched_dl_entity *dl_se = &curr->dl;
 	u64 delta_exec;
+	u64 now = cpu_clock(rq->cpu);
 
 	if (!dl_task(curr) || !on_dl_rq(dl_se))
 		return;
 
-	delta_exec = rq->clock_task - curr->se.exec_start;
+	delta_exec = now - curr->se.exec_start;
 	if (unlikely((s64)delta_exec < 0))
 		delta_exec = 0;
 
@@ -550,7 +551,7 @@ static void update_curr_dl(struct rq *rq)
 	schedstat_add(&rq->dl, exec_clock, delta_exec);
 	account_group_exec_runtime(curr, delta_exec);
 
-	curr->se.exec_start = rq->clock;
+	curr->se.exec_start = now;
 	cpuacct_charge(curr, delta_exec);
 
 	sched_rt_avg_update(rq, delta_exec);
@@ -897,10 +898,8 @@ static void check_preempt_curr_dl(struct rq *rq, struct task_struct *p,
 #ifdef CONFIG_SCHED_HRTICK
 static void start_hrtick_dl(struct rq *rq, struct task_struct *p)
 {
-	s64 delta = p->dl.dl_runtime - p->dl.runtime;
-
-	if (delta > 10000)
-		hrtick_start(rq, delta);
+	if (p->dl.runtime < (NSEC_PER_SEC/HZ))
+		hrtick_start(rq, p->dl.runtime);
 }
 #else
 static void start_hrtick_dl(struct rq *rq, struct task_struct *p)
@@ -946,7 +945,7 @@ struct task_struct *pick_next_task_dl(struct rq *rq)
 	BUG_ON(!dl_se);
 
 	p = dl_task_of(dl_se);
-	p->se.exec_start = rq->clock_task;
+	p->se.exec_start = cpu_clock(rq->cpu);
 
 	/* Running task will never be pushed. */
 	if (p)
@@ -978,7 +977,7 @@ static void task_tick_dl(struct rq *rq, struct task_struct *p, int queued)
 	update_curr_dl(rq);
 
 #ifdef CONFIG_SCHED_HRTICK
-	if (hrtick_enabled(rq) && queued && p->dl.runtime > 0)
+	if (hrtick_enabled(rq) && p->dl.runtime > 0)
 		start_hrtick_dl(rq, p);
 #endif
 }
@@ -1014,7 +1013,7 @@ static void set_curr_task_dl(struct rq *rq)
 {
 	struct task_struct *p = rq->curr;
 
-	p->se.exec_start = rq->clock_task;
+	p->se.exec_start = cpu_clock(rq->cpu);
 
 	/* You can't push away the running task */
 	dequeue_pushable_dl_task(rq, p);

@@ -1382,7 +1382,10 @@ static void hrtimer_rt_run_pending(void)
 			fn = timer->function;
 
 			raw_spin_unlock_irq(&cpu_base->lock);
+			ktime_t now = ktime_get();
+			trace_hrtimer_expire_entry(timer, &now);
 			restart = fn(timer);
+			trace_hrtimer_expire_exit(timer);
 			raw_spin_lock_irq(&cpu_base->lock);
 
 			hrtimer_rt_reprogram(restart, timer, base);
