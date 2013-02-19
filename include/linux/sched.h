@@ -150,6 +150,21 @@ struct sched_param2 {
 	u64 __unused[12];
 };
 
+/* Set to sched_flags of struct sched_parm2 */
+#define SCHED_DL_DMISS_DETECT_DISABLE			0
+#define SCHED_DL_DMISS_DETECT_ENABLE			1
+
+/*
+ * When SCHED_DL_DMISS_DETECT_ENABLE is enabled, you have to choice the action
+ * from the following actions and add to sched_flags of struct sched_param2.
+ */
+#define SCHED_DL_DMISS_ACT_NONE				2
+#define SCHED_DL_DMISS_ACT_SEND_SIG_OWN			4
+#define SCHED_DL_DMISS_ACT_SEND_SIG_OTHER_WITH_RUN	6
+#define SCHED_DL_DMISS_ACT_SEND_SIG_OTHER_WITH_STOP	8
+#define SCHED_DL_DMISS_ACT_PROCESS_END			10
+#define SCHED_DL_DMISS_ACT_PROCESS_STOP			12
+
 struct exec_domain;
 struct futex_pi_state;
 struct robust_list_head;
@@ -1326,6 +1341,17 @@ struct sched_dl_entity {
 #ifdef CONFIG_SCHEDSTATS
 	struct sched_stats_dl stats;
 #endif
+
+	/*
+	 * Some bool flags:
+	 *
+	 * @task_yielded will be enable when sched_yield system call is called.
+	 * @dmissed will be enable when task exceeded its deadline.
+	 *
+	 * These are used by checing deadline miss when dl_task_timer function
+	 * is executed.
+	 */
+	int task_yielded, dmissed;
 };
 
 struct rcu_node;
@@ -2220,6 +2246,8 @@ int sched_rt_handler(struct ctl_table *table, int write,
 
 extern unsigned int sysctl_sched_dl_period;
 extern int sysctl_sched_dl_runtime;
+extern unsigned int sysctl_sched_dl_dmiss_count;
+extern unsigned int sysctl_sched_dl_dmiss_sig_pid;
 
 int sched_dl_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp,

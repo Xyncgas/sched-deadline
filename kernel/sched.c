@@ -1128,6 +1128,9 @@ static inline u64 global_rt_runtime(void)
 	return (u64)sysctl_sched_rt_runtime * NSEC_PER_USEC;
 }
 
+unsigned int sysctl_sched_dl_dmiss_count;
+unsigned int sysctl_sched_dl_dmiss_sig_pid;
+
 /*
  * Maximum bandwidth available for all -deadline tasks and groups
  * (if group scheduling is configured) on each CPU.
